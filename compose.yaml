@@ -1,0 +1,90 @@
+# The Cards stack. Settings come from .env (see .env.example); use ./cards rather than calling
+# docker compose directly so the updater is started or removed to match CARDS_AUTO_UPDATE.
+
+x-app-environment: &app-environment
+    NODE_ENV: production
+    APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env}
+    NEXT_BIND_HOST: 0.0.0.0
+    WS_BIND_HOST: 0.0.0.0
+    PORT: 4104
+    WS_PORT: 4105
+    MONGODB_URI: mongodb://root:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/nextauth?authSource=admin
+    ANYLOGGER_MONGODB_URI: mongodb://root:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017
+    Secret: ${Secret:?Run ./cards setup}
+    EmailAccount: ${EmailAccount:-}
+    EmailPassword: ${EmailPassword:-}
+    EMAIL_FROM: ${EMAIL_FROM:-${EmailAccount:-}}
+    GAME_METRICS_TOKEN: ${GAME_METRICS_TOKEN:-}
+
+services:
+    proxy:
+        image: ${CARDS_IMAGE_PREFIX:?Run ./cards setup}/cards-proxy:${CARDS_VERSION:?Run ./cards setup}
+        restart: unless-stopped
+        ports:
+            - '${APP_MAIN_PORT:-4004}:80'
+        environment:
+            NEXT_UPSTREAM_HOST: next
+            NEXT_UPSTREAM_PORT: 4104
+            WS_UPSTREAM_HOST: ws
+            WS_UPSTREAM_PORT: 4105
+        # nginx resolves the upstream addresses once at startup, so restart it whenever next or ws
+        # is recreated.
+        depends_on:
+            next:
+                condition: service_started
+                restart: true
+            ws:
+                condition: service_started
+                restart: true
+        networks: [cards-net]
+
+    next:
+        image: ${CARDS_IMAGE_PREFIX}/cards-next:${CARDS_VERSION}
+        restart: unless-stopped
+        environment: *app-environment
+        depends_on: [mongodb, ws]
+        networks: [cards-net]
+
+    ws:
+        image: ${CARDS_IMAGE_PREFIX}/cards-ws:${CARDS_VERSION}
+        restart: unless-stopped
+        environment: *app-environment
+        depends_on: [mongodb]
+        networks: [cards-net]
+
+    mongodb:
+        image: mongodb/mongodb-community-server:8.2.1-ubi8
+        restart: unless-stopped
+        ports:
+            - '127.0.0.1:${MONGODB_HOST_PORT:-27218}:27017'
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: root
+            MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?Run ./cards setup}
+        volumes:
+            - mongodb_data:/data/db
+        networks: [cards-net]
+
+    # Installs new releases as they are announced (CARDS_AUTO_UPDATE=true), and runs `./cards update`.
+    # It drives the host's Docker through the mounted socket, and mounts this directory at the same
+    # path it has on the host so docker compose resolves the project identically in both places.
+    updater:
+        build: ./updater
+        profiles: [autoupdate]
+        restart: unless-stopped
+        command: [listen]
+        working_dir: ${CARDS_DIR:?Run ./cards setup}
+        environment:
+            CARDS_DIR: ${CARDS_DIR}
+            CARDS_UPDATE_SERVER: ${CARDS_UPDATE_SERVER:-https://ntfy.sh}
+            CARDS_UPDATE_TOPIC: ${CARDS_UPDATE_TOPIC:-}
+            CARDS_UPDATE_TOKEN: ${CARDS_UPDATE_TOKEN:-}
+        volumes:
+            - ${CARDS_DIR}:${CARDS_DIR}
+            - /var/run/docker.sock:/var/run/docker.sock
+        networks: [cards-net]
+
+volumes:
+    mongodb_data:
+
+networks:
+    cards-net:
