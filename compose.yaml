@@ -65,12 +65,14 @@ services:
         networks: [cards-net]
 
     # Installs new releases as they are announced (CARDS_AUTO_UPDATE=true), and runs `./cards update`.
+    # It is the stock docker CLI image running updater/updater.sh, so nothing is built on the host.
     # It drives the host's Docker through the mounted socket, and mounts this directory at the same
     # path it has on the host so docker compose resolves the project identically in both places.
     updater:
-        build: ./updater
+        image: docker:28-cli
         profiles: [autoupdate]
         restart: unless-stopped
+        entrypoint: [sh, updater/updater.sh]
         command: [listen]
         working_dir: ${CARDS_DIR:?Run ./cards setup}
         environment:

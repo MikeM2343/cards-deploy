@@ -1,5 +1,5 @@
-# Helpers shared by ./cards (on the host) and updater/updater.sh (in the updater container).
-# Both run with this repository as the working directory.
+# Helpers shared by ./cards (bash, on the host) and updater/updater.sh (sh, in the updater
+# container), so this file sticks to POSIX sh. Both run with this repository as the working directory.
 
 readonly EnvFile=.env
 readonly StateDir=state
@@ -8,7 +8,7 @@ readonly VersionPattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
 # Prints the value of a key in .env, or nothing when it is unset.
 getConfig() {
-	[[ -f $EnvFile ]] || return 0
+	[ -f "$EnvFile" ] || return 0
 	sed -n "s/^$1=//p" "$EnvFile" | tail -n 1
 }
 
@@ -25,5 +25,5 @@ setConfig() {
 
 # True when version $1 sorts after version $2 (an empty $2 counts as older than anything).
 isNewer() {
-	[[ $1 != "$2" && $(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1) == "$1" ]]
+	[ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
 }
